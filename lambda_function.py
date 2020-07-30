@@ -97,10 +97,10 @@ def get_emil_ids():
 def send_email(body):
 
     ses_client.send_email(
-     Source='hari.kammana@gmail.com',
+     Source='indukuriv@gmail.com',
      Destination = {
          'ToAddresses': [
-            'hari.kammana@gmail.com',
+            'indukuriv@gmail.com',
         ]
     },
     Message = {
