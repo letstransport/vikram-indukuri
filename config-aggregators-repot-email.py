@@ -101,9 +101,9 @@ def get_to_email_id(aggregator_name):
 
 # Send Email 
 def send_email(body):
-    from_email = 'hari.kammana@gmail.com'
+    from_email = 'indukuriv@gmail.com'
     subject = 'Aggrigators Report'
-    to_email = 'hari.kammana@gmail.com'
+    to_email = 'indukuriv@gmail.com'
     ses_client.send_email(
      Source=from_email,
      Destination = {
