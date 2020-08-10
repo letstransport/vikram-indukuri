@@ -1,119 +1,174 @@
-import boto3
 import json
-config = boto3.client('config')
-ses_client = boto3.client('ses')
-def lambda_handler(event,context):
-    get_resources()
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
-def get_resources():
-    aggregators = get_config_rules()
-    rules = []
-    final_resp = []
+import re
+
+import boto3
+from botocore.exceptions import ClientError
+
+DEV_OPS_DL = 'indukuriv@gmail.com'
+#AUDIT_EMAIL_ADDRESS = 'auditing.test@'
+#RETURN_PATH_ADDRESS = 'auditing.feedback@'
+#SES_SOURCE_ARN = 'arn:aws:ses:us-east-1:90045041:identity/'
+#SES_RETURNPATH_ARN = 'arn:aws:ses:us-east-1:900755041:identity/'
+#DEBUG_EMAIL_DESTINATION = 'AWS-DEVOPS-TEST@'
+RULE_NAME_REGEX = '-(.*?)-'
+
+ses_client = boto3.client('ses', region_name="us-east-1")
+config_client = boto3.client('config')
+
+# Lambda handler function
+
+
+def lambda_handler(event, context):
+    #pylint: disable=unused-argument
+    generate_reports()
+
+
+def is_prod_environment():
+    """Returns True if running in dev environment otherwise False"""
+    return False
+    # return 'HOME' in os.environ and os.environ.get('ENVIRONMENT') == 'PROD'
+
+# This is the main function that retrieves the data and emails the reports
+
+
+def generate_reports():
+    aggregators = get_aggregator_data('BusinessUnit')
+#    print(aggregators)
+#    print('Got list of BU aggregators' + str(aggregators))
+    jsondata = []
+
     for aggregator in aggregators:
-        rules = []
-        aggregator_name = aggregator['AggregatorName']
-        aggregator_rules = aggregator['AggregatorRules']
-        agg_rules_obj  = {}
-        agg_rules_obj['AggregatorName'] = aggregator_name
+        agg_rules_obj = {}
+        agg_rules_obj['AggregatorName'] = aggregator['AggregatorName']
+        agg_rules_obj['AggregatorRules'] = []
+        resources_by_rule_name = {}
+        
 
-        for rule in aggregator_rules:
-            result  = {}
+        for rule in aggregator['AggregatorRules']:
             rule_name = rule['ConfigRuleName']
             account_id = rule['AccountId']
             aws_region = rule['AwsRegion']
-            rule_resp = config.get_aggregate_compliance_details_by_config_rule(
-                ConfigurationAggregatorName = aggregator_name,
-                ConfigRuleName = rule_name,
-                ComplianceType = 'NON_COMPLIANT',
-                AccountId = account_id,
-                AwsRegion = aws_region
-            )
-            for resource in rule_resp['AggregateEvaluationResults']:
-                result = resource['EvaluationResultIdentifier']['EvaluationResultQualifier']
-                result['AccountId'] = account_id
-                result['AwsRegion'] = aws_region
-                rules.append(result)
-            agg_rules_obj['AggregatorRules'] = rules
-        final_resp.append(agg_rules_obj)
-        send_email(str(agg_rules_obj))
-    json.dumps(final_resp)
-    print(final_resp)
+#            print(re.findall(RULE_NAME_REGEX, rule_name))
+            if re.findall(RULE_NAME_REGEX, rule_name)!= []:
+                base_rule_name = re.findall(RULE_NAME_REGEX, rule_name)[0]
+#            print(base_rule_name)
+            rule_resources = resources_by_rule_name.get(base_rule_name, [])
 
+            paginator = config_client.get_paginator(
+                'get_aggregate_compliance_details_by_config_rule')
+            for page in paginator.paginate(ConfigurationAggregatorName=aggregator['AggregatorName'],
+                                           ConfigRuleName=rule_name,
+                                           ComplianceType='NON_COMPLIANT',
+                                           AccountId=account_id,
+                                           AwsRegion=aws_region):
+                for eval_result in page['AggregateEvaluationResults']:
+                    result = eval_result['EvaluationResultIdentifier']['EvaluationResultQualifier']
+                    result['AccountId'] = account_id
+                    result['AwsRegion'] = aws_region
+                    rule_resources.append(result)
 
-def get_config_rules():
-    aggregator_names = get_aggregator_names()
-    config_rule_names = []
-    aggregator_rule_info = []
-    
-    for aggregator_name in aggregator_names:
-        aggregator_name_rule = {}
-        aggregator_name_rule['AggregatorName'] = aggregator_name
-        next_token = ''
-        while True:
-            config_rules_resp = config.describe_aggregate_compliance_by_config_rules(
-            ConfigurationAggregatorName = aggregator_name,
-                Filters={
-                    'ComplianceType': 'NON_COMPLIANT'
-                },
-                NextToken = next_token
-            )
-            config_rule_names += config_rules_resp['AggregateComplianceByConfigRules']
-            if 'NextToken' in config_rules_resp:
-                next_token = config_rules_resp['NextToken']
-            else:
-                break 
-        aggregator_name_rule['AggregatorRules'] = config_rule_names
-        aggregator_rule_info.append(aggregator_name_rule)
-    return aggregator_rule_info
+            resources_by_rule_name[base_rule_name] = rule_resources
 
-'''
-def get_aggregator_names():
-    aggregator_names = []
-    next_token = ''
+        for rule in resources_by_rule_name:
+            agg_rules_obj['AggregatorRules'].append(
+                {'rule': rule, 'resources': resources_by_rule_name[rule]})
 
-    while True:
-        response = config.describe_configuration_aggregators(
-            NextToken = next_token
+#        print(f"Sending report for {get_aggregator_business_unit(aggregator)}")
+#        send_email(aggregator, json.dumps(agg_rules_obj))
+#        print(json.dumps(agg_rules_obj))
+
+        print(agg_rules_obj)
+        BusinessUnit = get_aggregator_business_unit(aggregator)
+        print("Print businessunit : " + BusinessUnit)
+        jsondata = json.dumps(agg_rules_obj)
+
+#        print("Json Data : " + jsondata)
+        # Send email using a template
+        response = ses_client.send_templated_email(
+            Source=DEV_OPS_DL,
+            Destination={
+                'ToAddresses': [
+                    'indukuriv@gmail.com',
+                ],
+            },
+            Template='AWSConfigComplianceReport',
+            TemplateData=jsondata
         )
-        aggregator_names += [aggregator['ConfigurationAggregatorName'] for aggregator in response['ConfigurationAggregators']]
-        if 'NextToken' in response:
-            next_token = response['NextToken']
-        else:
-            break
-    return aggregator_names
 
-'''
-# The above code which is comented is replaced with code below 
+        print(f"Sent report for {get_aggregator_business_unit(aggregator)}")
+        break
 
-def get_aggregator_names():
-    aggregator_names = []
-    for page in config.get_paginator('describe_configuration_aggregators').paginate():
-        aggregator_names += [agg['ConfigurationAggregatorName'] for agg in page['ConfigurationAggregators']]
-    return aggregator_names
 
-def get_emil_ids():
-    pass
+def get_aggregator_data(aggregator_level):
+    """
+    Parameters:
+    aggregatorLevel (string): filter by either Pillar or BusinessUnit.
 
-def send_email(body):
+    Returns a list of aggregators and their rules that were evaluated as non compliant
+    """
+    aggregator_rule_list = []
+    aggregators = get_aggregators()
+    print('Got list of ALL aggregators')
 
-    ses_client.send_email(
-     Source='indukuriv@gmail.com',
-     Destination = {
-         'ToAddresses': [
-            'indukuriv@gmail.com',
-        ]
-    },
-    Message = {
-        'Subject': {
-            'Data': 'Demo Report',
-            'Charset': 'UTF-8'
-        },
-        'Body': {
-            'Text': {
-                'Data': body,
-                'Charset': 'UTF-8'
-            }
-        }
-    },
-    )
-# lambda_handler(None,None)
+    for aggregator in aggregators:
+        config_rules = []
+        aggregator_name = aggregator['AggregatorName']
+        tags = aggregator['Tags']
+
+        if tags['AggregatorLevel'] != aggregator_level:
+            continue
+
+        aggregator_info = {}
+        aggregator_info['AggregatorName'] = aggregator_name
+        aggregator_info['Tags'] = tags
+        paginator = config_client.get_paginator(
+            'describe_aggregate_compliance_by_config_rules')
+        for page in paginator.paginate(ConfigurationAggregatorName=aggregator_name, Filters={'ComplianceType': 'NON_COMPLIANT'}):
+            config_rules.extend(page['AggregateComplianceByConfigRules'])
+
+        aggregator_info['AggregatorRules'] = config_rules
+        aggregator_rule_list.append(aggregator_info)
+    return aggregator_rule_list
+
+# This function returns a list of aggregators and their tags.
+
+
+def get_aggregators():
+    """Returns a list of AWS Config rule aggregators"""
+    aggregators = []
+    for page in config_client.get_paginator('describe_configuration_aggregators').paginate():
+        for aggregator in page['ConfigurationAggregators']:
+            name = aggregator['ConfigurationAggregatorName']
+            aggregator_arn = aggregator['ConfigurationAggregatorArn']
+            tags = get_tags_for_resource(aggregator_arn)
+            aggregators.append({'AggregatorName': name, 'Tags': tags})
+    return aggregators
+
+# Returns the tags for a resource
+
+
+def get_tags_for_resource(arn):
+    """Parameters:
+    arn (string): The arn of the resource
+    """
+    resp = config_client.list_tags_for_resource(ResourceArn=arn)
+    tags = {tags['Key']: tags['Value'] for tags in resp['Tags']}
+    return tags
+
+# Gets the contact address associated with an aggregator
+
+
+def get_aggregator_email_contact(aggregator):
+    if is_prod_environment():
+        return aggregator['Tags']['DevOpsContact']
+    return DEBUG_EMAIL_DESTINATION
+
+
+def get_aggregator_business_unit(aggregator):
+    print(aggregator['Tags']['BusinessUnit'])
+    return aggregator['Tags']['BusinessUnit']
+
