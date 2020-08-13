@@ -9,11 +9,11 @@ import boto3
 from botocore.exceptions import ClientError
 
 DEV_OPS_DL = 'indukuriv@gmail.com'
-#AUDIT_EMAIL_ADDRESS = 'auditing.test@mail.aws.wellsky.io'
-#RETURN_PATH_ADDRESS = 'auditing.feedback@mail.aws.wellsky.io'
-#SES_SOURCE_ARN = 'arn:aws:ses:us-east-1:900751145041:identity/mail.aws.wellsky.io'
-#SES_RETURNPATH_ARN = 'arn:aws:ses:us-east-1:900751145041:identity/mail.aws.wellsky.io'
-#DEBUG_EMAIL_DESTINATION = 'AWS-DEVOPS-TEST@wellsky.com'
+#AUDIT_EMAIL_ADDRESS = 'auditing.test@mail.aws..io'
+#RETURN_PATH_ADDRESS = 'auditing.feedback@mail.aws..io'
+#SES_SOURCE_ARN = 'arn:aws:ses:us-east-1:900751145041:identity/mail.aws..io'
+#SES_RETURNPATH_ARN = 'arn:aws:ses:us-east-1:900751145041:identity/mail.aws..io'
+#DEBUG_EMAIL_DESTINATION = 'AWS-DEVOPS-TEST@wey.com'
 RULE_NAME_REGEX = '-(.*?)-'
 
 ses_client = boto3.client('ses', region_name="us-east-1")
