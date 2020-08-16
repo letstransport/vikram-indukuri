@@ -70,12 +70,13 @@ def generate_reports():
                 rule_data["severity"] = rule_info["severity"]
             agg_rules_obj['AggregatorRules'].append(rule_data)
 
-        #u r takign thsi array then gettting lenght of array ,
+        print("line 73")
         AggregatorRulesArr = agg_rules_obj.get('AggregatorRules')
         AggregatorRulesArrLength = len(AggregatorRulesArr)
         l = 0
         h = AggregatorRulesArrLength - 1
         m = 0
+        print("line 79")
         while (m <= h):
             severity = AggregatorRulesArr[m].get('severity')
             if severity == 'Medium':
@@ -87,7 +88,9 @@ def generate_reports():
             elif severity == 'Low':
                 AggregatorRulesArr = swap(AggregatorRulesArr, m, h)
                 h = h - 1
+        print("line 91")        
         agg_rules_obj['AggregatorRules'] = AggregatorRulesArr
+        print("line 93")
         print(json.dumps(agg_rules_obj))
 #        updated_agg_rules_obj = appending_rule_data(agg_rules_obj)
 #        print("Appended output :" + updated_agg_rules_obj)
